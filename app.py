@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify
 from db.mongo_client import collection
-from db.redis_client import r
 
+from db.redis_client import r
+from db.neo4j_client import driver
 app = Flask(__name__)
 
 
@@ -9,13 +10,6 @@ app = Flask(__name__)
 def home():
     return "Inventory System Running 🚀"
 
-
-# ADD PRODUCT API
-@app.route('/add_product', methods=['POST'])
-def add_product():
-    data = request.json
-    collection.insert_one(data)
-    return jsonify({"message": "Product added successfully"})
 
 
 # VIEW ALL PRODUCTS
@@ -70,6 +64,26 @@ def rate_limit():
         r.incr(ip)
         r.expire(ip, 60)
         return jsonify({"message": "Request allowed"})
+@app.route('/add_product', methods=['POST'])
+def add_product():
+    data = request.json
 
+    # Save in MongoDB
+    collection.insert_one(data)
+
+    # Save in Neo4j
+    with driver.session() as session:
+        session.run(
+            """
+            MERGE (p:Product {id: $pid, name: $pname})
+            MERGE (m:Manufacturer {name: $mname})
+            MERGE (p)-[:MANUFACTURED_BY]->(m)
+            """,
+            pid=data.get("id"),
+            pname=data.get("name"),
+            mname=data.get("manufacturer", "Unknown")
+        )
+
+    return jsonify({"message": "Product added in MongoDB + Neo4j"})
 if __name__ == '__main__':
     app.run(debug=True)
