@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from db.mongo_client import collection
+from db.redis_client import r
 
 app = Flask(__name__)
 
@@ -55,5 +56,20 @@ def delete_product(product_id):
         return jsonify({"message": "Product deleted"})
     else:
         return jsonify({"error": "Product not found"}), 404
+
+
+@app.route('/ratelimit')
+def rate_limit():
+    ip = request.remote_addr
+
+    count = r.get(ip)
+
+    if count and int(count) >= 5:
+        return jsonify({"error": "Rate limit exceeded"}), 429
+    else:
+        r.incr(ip)
+        r.expire(ip, 60)
+        return jsonify({"message": "Request allowed"})
+
 if __name__ == '__main__':
     app.run(debug=True)
